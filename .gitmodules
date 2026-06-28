@@ -1,0 +1,3 @@
+[submodule "baselines/RoomFormer"]
+	path = baselines/RoomFormer
+	url = git@github.com:gaspardruan/RoomFormer.git
