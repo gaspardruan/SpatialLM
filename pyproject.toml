@@ -51,3 +51,17 @@ build-backend = "poetry.core.masonry.api"
 priority = "supplemental"
 name = "pytorch"
 url = "https://download.pytorch.org/whl/cu124"
+
+[dependency-groups]
+roomformer = [
+    "opencv-python-headless (==4.10.0.84)",
+    "fvcore (>=0.1.5.post20221221,<0.2.0)",
+    "pycocotools (>=2.0.11,<3.0.0)",
+    "cloudpickle (==2.1.0)",
+    "imageio (==2.19.3)",
+    "matplotlib (==3.6.2)",
+    "omegaconf (==2.2.2)",
+    "fairscale (==0.4.6)",
+    "timm (==0.5.4)",
+    "descartes (>=1.1.0,<2.0.0)"
+]
