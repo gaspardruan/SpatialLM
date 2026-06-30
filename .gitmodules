@@ -1,3 +1,6 @@
 [submodule "baselines/RoomFormer"]
 	path = baselines/RoomFormer
 	url = git@github.com:gaspardruan/RoomFormer.git
+[submodule "baselines/SceneScript"]
+	path = baselines/SceneScript
+	url = git@github.com:gaspardruan/scenescript.git
