@@ -132,6 +132,25 @@ python visualize.py --point_cloud pcd/scene0000_00.ply --layout scene0000_00.txt
 rerun scene0000_00.rrd
 ```
 
+#### RoomFormer layout visualization
+
+RoomFormer predicts 2D layouts from density images. To visualize its Structured3D predictions in the same Rerun format as SpatialLM, first convert the RoomFormer prediction JSON to a SpatialLM layout txt, then reuse `visualize.py` with the corresponding SpatialLM point cloud.
+
+```bash
+# Convert RoomFormer prediction JSON to SpatialLM layout txt
+python tools/roomformer/convert_prediction_to_spatiallm_layout.py \
+  --scene_id 03250 \
+  --output outputs/roomformer_scene_03250_layout_rerun022.txt
+
+# Visualize the converted RoomFormer layout with the SpatialLM point cloud
+python visualize.py \
+  --point_cloud /ssd/zq/.cache/huggingface/hub/datasets--ysmao--structured3d-spatiallm/snapshots/c5bedd45675b566547e6ae0bc077681bc58b7b35/pcd/scene_03250.ply \
+  --layout outputs/roomformer_scene_03250_layout_rerun022.txt \
+  --save outputs/roomformer_scene_03250_rerun022.rrd
+
+rerun outputs/roomformer_scene_03250_rerun022.rrd --web-viewer --renderer webgl
+```
+
 ### Evaluation
 
 To evaluate the performance of SpatialLM, we provide `eval.py` script that reports the benchmark results on the SpatialLM-Testset in the table below in section [Benchmark Results](#benchmark-results).
@@ -202,6 +221,99 @@ We thank @chinmay0301ucsd for identifying and fixing a bug [#88](https://github.
 | **F1 @.5 IoU**  |      81.4      |            89.2             |                  93.5                  |
 
 </div>
+
+#### Reproducing the RoomFormer baseline
+
+The RoomFormer baseline is vendored under `baselines/RoomFormer`. The semantically-rich Structured3D evaluation predicts rooms, doors, and windows, and writes both aggregate metrics and per-scene prediction JSON files.
+
+Prepare the RoomFormer dependency group and compile the two CUDA extensions:
+
+```bash
+# From the SpatialLM repository root
+poetry install --with roomformer
+
+cd baselines/RoomFormer/models/ops
+sh make.sh
+python test.py  # optional sanity check for MultiScaleDeformableAttention
+
+cd ../../diff_ras
+python -m pip install -e . --no-build-isolation
+
+cd ../../..
+```
+
+The RoomFormer data and checkpoint should follow the original RoomFormer layout:
+
+```text
+baselines/RoomFormer/
+├── data/stru3d/
+│   ├── test/
+│   └── annotations/test.json
+├── checkpoints/roomformer_stru3d_semantic_rich.pth
+└── s3d_floorplan_eval/montefloor_data/
+```
+
+Run the semantically-rich Structured3D evaluation:
+
+```bash
+cd baselines/RoomFormer
+chmod +x tools/eval_stru3d_sem_rich.sh
+CUDA_VISIBLE_DEVICES=1 ./tools/eval_stru3d_sem_rich.sh
+cd ../..
+```
+
+The main outputs are:
+
+```text
+baselines/RoomFormer/checkpoints/eval_stru3d_sem_rich/results.txt
+baselines/RoomFormer/checkpoints/eval_stru3d_sem_rich/predictions/*.json
+```
+
+To reproduce the RoomFormer numbers in the SpatialLM layout-estimation table, convert the RoomFormer semantically-rich predictions to the same text layout format consumed by `eval.py`:
+
+```bash
+python tools/roomformer/convert_sem_rich_to_spatiallm.py \
+  --prediction_dir baselines/RoomFormer/checkpoints/eval_stru3d_sem_rich/predictions \
+  --montefloor_data_dir baselines/RoomFormer/s3d_floorplan_eval/montefloor_data \
+  --output_dir baselines/RoomFormer/spatiallm_eval
+```
+
+This produces the table-evaluation inputs:
+
+```text
+baselines/RoomFormer/spatiallm_eval/
+├── metadata.csv
+├── label_mapping.tsv
+├── gt/*.txt
+└── pred/*.txt
+```
+
+Then run the SpatialLM evaluator on the converted RoomFormer outputs:
+
+```bash
+python eval.py \
+  --metadata baselines/RoomFormer/spatiallm_eval/metadata.csv \
+  --gt_dir baselines/RoomFormer/spatiallm_eval/gt \
+  --pred_dir baselines/RoomFormer/spatiallm_eval/pred \
+  --label_mapping baselines/RoomFormer/spatiallm_eval/label_mapping.tsv
+```
+
+For example, after evaluating scene `03250`, visualize the RoomFormer prediction with the corresponding SpatialLM Structured3D point cloud:
+
+```bash
+python tools/roomformer/convert_prediction_to_spatiallm_layout.py \
+  --scene_id 03250 \
+  --output outputs/roomformer_scene_03250_layout_rerun022.txt
+
+python visualize.py \
+  --point_cloud /ssd/zq/.cache/huggingface/hub/datasets--ysmao--structured3d-spatiallm/snapshots/c5bedd45675b566547e6ae0bc077681bc58b7b35/pcd/scene_03250.ply \
+  --layout outputs/roomformer_scene_03250_layout_rerun022.txt \
+  --save outputs/roomformer_scene_03250_rerun022.rrd
+
+rerun outputs/roomformer_scene_03250_rerun022.rrd --web-viewer --renderer webgl
+```
+
+If the Rerun viewer is upgraded, regenerate the `.rrd` files with the same `rerun-sdk` version that will be used to open them.
 
 ### 3D Object Detection
 
