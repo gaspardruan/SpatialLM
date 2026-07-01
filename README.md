@@ -132,25 +132,6 @@ python visualize.py --point_cloud pcd/scene0000_00.ply --layout scene0000_00.txt
 rerun scene0000_00.rrd
 ```
 
-#### RoomFormer layout visualization
-
-RoomFormer predicts 2D layouts from density images. To visualize its Structured3D predictions in the same Rerun format as SpatialLM, first convert the RoomFormer prediction JSON to a SpatialLM layout txt, then reuse `visualize.py` with the corresponding SpatialLM point cloud.
-
-```bash
-# Convert RoomFormer prediction JSON to SpatialLM layout txt
-python tools/roomformer/convert_prediction_to_spatiallm_layout.py \
-  --scene_id 03250 \
-  --output outputs/roomformer_scene_03250_layout_rerun022.txt
-
-# Visualize the converted RoomFormer layout with the SpatialLM point cloud
-python visualize.py \
-  --point_cloud /ssd/zq/.cache/huggingface/hub/datasets--ysmao--structured3d-spatiallm/snapshots/c5bedd45675b566547e6ae0bc077681bc58b7b35/pcd/scene_03250.ply \
-  --layout outputs/roomformer_scene_03250_layout_rerun022.txt \
-  --save outputs/roomformer_scene_03250_rerun022.rrd
-
-rerun outputs/roomformer_scene_03250_rerun022.rrd --web-viewer --renderer webgl
-```
-
 ### Evaluation
 
 To evaluate the performance of SpatialLM, we provide `eval.py` script that reports the benchmark results on the SpatialLM-Testset in the table below in section [Benchmark Results](#benchmark-results).

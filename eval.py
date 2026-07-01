@@ -361,6 +361,12 @@ def calc_layout_tp(
     return EvalTuple(tp, num_pred, num_gt)
 
 
+def mean_f1(eval_tuples: List[EvalTuple]):
+    return np.ma.masked_where(
+        [t.masked for t in eval_tuples], [t.f1 for t in eval_tuples]
+    ).mean()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("SpatialLM evaluation script")
     parser.add_argument(
@@ -503,32 +509,23 @@ if __name__ == "__main__":
 
     headers = ["Layouts", "F1 @.25 IoU", "F1 @.50 IoU"]
     table_data = [headers]
+    layout_f1_25 = []
+    layout_f1_50 = []
     for class_name in LAYOUTS:
-        tuples = classwise_eval_tuples_25[class_name]
-        f1_25 = np.ma.masked_where(
-            [t.masked for t in tuples], [t.f1 for t in tuples]
-        ).mean()
-
-        tuples = classwise_eval_tuples_50[class_name]
-        f1_50 = np.ma.masked_where(
-            [t.masked for t in tuples], [t.f1 for t in tuples]
-        ).mean()
+        f1_25 = mean_f1(classwise_eval_tuples_25[class_name])
+        f1_50 = mean_f1(classwise_eval_tuples_50[class_name])
+        layout_f1_25.append(f1_25)
+        layout_f1_50.append(f1_50)
 
         table_data.append([class_name, f1_25, f1_50])
+    table_data.append(["avg", np.mean(layout_f1_25), np.mean(layout_f1_50)])
     print("\n" + AsciiTable(table_data).table)
 
     headers = ["Objects", "F1 @.25 IoU", "F1 @.50 IoU"]
     table_data = [headers]
     for class_name in OBJECTS:
-        tuples = classwise_eval_tuples_25[class_name]
-        f1_25 = np.ma.masked_where(
-            [t.masked for t in tuples], [t.f1 for t in tuples]
-        ).mean()
-
-        tuples = classwise_eval_tuples_50[class_name]
-        f1_50 = np.ma.masked_where(
-            [t.masked for t in tuples], [t.f1 for t in tuples]
-        ).mean()
+        f1_25 = mean_f1(classwise_eval_tuples_25[class_name])
+        f1_50 = mean_f1(classwise_eval_tuples_50[class_name])
 
         table_data.append([class_name, f1_25, f1_50])
     print("\n" + AsciiTable(table_data).table)
