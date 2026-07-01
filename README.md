@@ -269,19 +269,18 @@ baselines/RoomFormer/checkpoints/eval_stru3d_sem_rich/results.txt
 baselines/RoomFormer/checkpoints/eval_stru3d_sem_rich/predictions/*.json
 ```
 
-To reproduce the RoomFormer numbers in the SpatialLM layout-estimation table, convert the RoomFormer semantically-rich predictions to the same text layout format consumed by `eval.py`:
+To reproduce the RoomFormer numbers in the SpatialLM layout-estimation table, convert the RoomFormer semantically-rich predictions to the same text layout format consumed by `eval.py`. The prediction coordinates are projected back into the Hugging Face Structured3D point-cloud frame, and the GT is copied from the Hugging Face `layout/` files:
 
 ```bash
-python tools/roomformer/convert_sem_rich_to_spatiallm.py \
+python tools/roomformer/prepare_spatiallm_eval_hfgt.py \
   --prediction_dir baselines/RoomFormer/checkpoints/eval_stru3d_sem_rich/predictions \
-  --montefloor_data_dir baselines/RoomFormer/s3d_floorplan_eval/montefloor_data \
-  --output_dir baselines/RoomFormer/spatiallm_eval
+  --output_dir baselines/RoomFormer/spatiallm_eval_hfgt
 ```
 
 This produces the table-evaluation inputs:
 
 ```text
-baselines/RoomFormer/spatiallm_eval/
+baselines/RoomFormer/spatiallm_eval_hfgt/
 ├── metadata.csv
 ├── label_mapping.tsv
 ├── gt/*.txt
@@ -292,10 +291,10 @@ Then run the SpatialLM evaluator on the converted RoomFormer outputs:
 
 ```bash
 python eval.py \
-  --metadata baselines/RoomFormer/spatiallm_eval/metadata.csv \
-  --gt_dir baselines/RoomFormer/spatiallm_eval/gt \
-  --pred_dir baselines/RoomFormer/spatiallm_eval/pred \
-  --label_mapping baselines/RoomFormer/spatiallm_eval/label_mapping.tsv
+  --metadata baselines/RoomFormer/spatiallm_eval_hfgt/metadata.csv \
+  --gt_dir baselines/RoomFormer/spatiallm_eval_hfgt/gt \
+  --pred_dir baselines/RoomFormer/spatiallm_eval_hfgt/pred \
+  --label_mapping baselines/RoomFormer/spatiallm_eval_hfgt/label_mapping.tsv
 ```
 
 For example, after evaluating scene `03250`, visualize the RoomFormer prediction with the corresponding SpatialLM Structured3D point cloud:
@@ -303,14 +302,14 @@ For example, after evaluating scene `03250`, visualize the RoomFormer prediction
 ```bash
 python tools/roomformer/convert_prediction_to_spatiallm_layout.py \
   --scene_id 03250 \
-  --output outputs/roomformer_scene_03250_layout_rerun022.txt
+  --output outputs/roomformer_scene_03250_layout_hfgt_fixed_doors.txt
 
 python visualize.py \
   --point_cloud /ssd/zq/.cache/huggingface/hub/datasets--ysmao--structured3d-spatiallm/snapshots/c5bedd45675b566547e6ae0bc077681bc58b7b35/pcd/scene_03250.ply \
-  --layout outputs/roomformer_scene_03250_layout_rerun022.txt \
-  --save outputs/roomformer_scene_03250_rerun022.rrd
+  --layout outputs/roomformer_scene_03250_layout_hfgt_fixed_doors.txt \
+  --save outputs/roomformer_scene_03250_hfgt_fixed_doors.rrd
 
-rerun outputs/roomformer_scene_03250_rerun022.rrd --web-viewer --renderer webgl
+rerun outputs/roomformer_scene_03250_hfgt_fixed_doors.rrd --web-viewer --renderer webgl
 ```
 
 If the Rerun viewer is upgraded, regenerate the `.rrd` files with the same `rerun-sdk` version that will be used to open them.

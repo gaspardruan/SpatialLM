@@ -105,6 +105,49 @@ def nearest_wall_id(line, edges):
     return int(np.argmin([line_distance_to_segment(line, edge) for edge in edges]))
 
 
+def opening_wall_candidates(
+    line,
+    edges,
+    max_normal_distance=0.25,
+    min_overlap_ratio=0.5,
+    max_candidates=2,
+):
+    line = np.asarray(line, dtype=float)
+    line_vec = line[1] - line[0]
+    line_len = np.linalg.norm(line_vec)
+    if line_len < 1e-6:
+        return []
+
+    candidates = []
+    for wall_id, (p1, p2) in enumerate(edges):
+        p1 = np.asarray(p1, dtype=float)
+        p2 = np.asarray(p2, dtype=float)
+        wall_vec = p2 - p1
+        wall_len = np.linalg.norm(wall_vec)
+        if wall_len < 1e-6:
+            continue
+
+        wall_dir = wall_vec / wall_len
+        line_dir = line_vec / line_len
+        if abs(np.cross(wall_dir, line_dir)) > 0.1:
+            continue
+
+        line_proj = np.sort([(point - p1).dot(wall_dir) for point in line])
+        wall_proj = np.array([0.0, wall_len])
+        overlap = min(line_proj[1], wall_proj[1]) - max(line_proj[0], wall_proj[0])
+        if overlap / line_len < min_overlap_ratio:
+            continue
+
+        normal_dist = abs(np.cross(wall_dir, line.mean(axis=0) - p1))
+        if normal_dist > max_normal_distance:
+            continue
+
+        candidates.append((normal_dist, wall_id))
+
+    candidates.sort()
+    return [wall_id for _, wall_id in candidates[:max_candidates]]
+
+
 def roomformer_prediction_to_layout(prediction, points, wall_thickness=0.03):
     norm = roomformer_normalization(points)
     z_min = float(np.min(points[:, 2]))
@@ -135,26 +178,41 @@ def roomformer_prediction_to_layout(prediction, points, wall_thickness=0.03):
         prediction["window_doors"], prediction["window_doors_types"]
     ):
         world_line = np.asarray([image_to_world_xy(p, norm) for p in opening], dtype=float)
-        wall_id = nearest_wall_id(world_line, edges)
-        if wall_id is None:
+        if opening_type == TYPE_DOOR:
+            wall_ids = opening_wall_candidates(world_line, edges)
+        else:
+            wall_id = nearest_wall_id(world_line, edges)
+            wall_ids = [] if wall_id is None else [wall_id]
+
+        if not wall_ids:
             continue
 
         center = world_line.mean(axis=0)
         width = float(np.linalg.norm(world_line[1] - world_line[0]))
         if opening_type == TYPE_DOOR:
-            lines.append(
-                "door_{id}=Door(wall_{wall_id},{x:.6f},{y:.6f},{z:.6f},{width:.6f},{height:.6f})".format(
-                    id=door_id,
-                    wall_id=wall_id,
-                    x=center[0],
-                    y=center[1],
-                    z=center_z,
-                    width=width,
-                    height=height,
+            for wall_id in wall_ids:
+                wall = edges[wall_id]
+                wall_center = (wall[0] + wall[1]) * 0.5
+                wall_vec = wall[1] - wall[0]
+                wall_len = np.linalg.norm(wall_vec)
+                wall_dir = wall_vec / wall_len
+                wall_pos = wall[0] + np.mean(
+                    [(point - wall[0]).dot(wall_dir) for point in world_line]
+                ) * wall_dir
+                lines.append(
+                    "door_{id}=Door(wall_{wall_id},{x:.6f},{y:.6f},{z:.6f},{width:.6f},{height:.6f})".format(
+                        id=door_id,
+                        wall_id=wall_id,
+                        x=wall_pos[0],
+                        y=wall_pos[1],
+                        z=center_z,
+                        width=width,
+                        height=height,
+                    )
                 )
-            )
-            door_id += 1
+                door_id += 1
         elif opening_type == TYPE_WINDOW:
+            wall_id = wall_ids[0]
             lines.append(
                 "window_{id}=Window(wall_{wall_id},{x:.6f},{y:.6f},{z:.6f},{width:.6f},{height:.6f})".format(
                     id=window_id,
