@@ -33,6 +33,12 @@ def parse_args():
     parser.add_argument("--max_points", type=int, default=200000)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--nucleus_sampling_thresh", type=float, default=0.05)
+    parser.add_argument(
+        "--origin_padding",
+        type=float,
+        default=0.0,
+        help="Use 0.1 for Structured3D fine-tuned checkpoints prepared with padded origins.",
+    )
     parser.add_argument("--device", default="cuda", choices=["cuda", "cpu"])
     parser.add_argument("--overwrite", action="store_true")
     return parser.parse_args()
@@ -75,6 +81,7 @@ def main():
             lang_seq = model_wrapper.run_inference(
                 points,
                 nucleus_sampling_thresh=args.nucleus_sampling_thresh,
+                origin_padding=args.origin_padding,
                 verbose=False,
             )
             output_path.write_text(lang_seq.generate_language_string())

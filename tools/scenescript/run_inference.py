@@ -50,6 +50,12 @@ def parse_args():
         default=0.05,
         help="SceneScript nucleus sampling threshold. Official notebook uses 0.05.",
     )
+    parser.add_argument(
+        "--origin_padding",
+        type=float,
+        default=0.0,
+        help="Use 0.1 for Structured3D fine-tuned checkpoints prepared with padded origins.",
+    )
     parser.add_argument("--device", default="cuda", choices=["cuda", "cpu"])
     parser.add_argument("--verbose", action="store_true")
     return parser.parse_args()
@@ -75,6 +81,7 @@ def main():
     lang_seq = model_wrapper.run_inference(
         points,
         nucleus_sampling_thresh=args.nucleus_sampling_thresh,
+        origin_padding=args.origin_padding,
         verbose=args.verbose,
     )
 
