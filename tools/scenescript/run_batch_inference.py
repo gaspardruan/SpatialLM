@@ -41,6 +41,14 @@ def parse_args():
     )
     parser.add_argument("--device", default="cuda", choices=["cuda", "cpu"])
     parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument(
+        "--retry_empty_seeds",
+        default="",
+        help=(
+            "Comma-separated extra seeds used only when the first inference produces "
+            "0 entities, e.g. '1,2,3'. Empty by default for the original protocol."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -56,6 +64,11 @@ def main():
     model_wrapper = SceneScriptWrapper.load_from_checkpoint(args.checkpoint)
     if args.device == "cuda":
         model_wrapper = model_wrapper.cuda()
+    retry_empty_seeds = [
+        int(seed.strip())
+        for seed in args.retry_empty_seeds.split(",")
+        if seed.strip()
+    ]
 
     done = 0
     skipped = 0
@@ -73,20 +86,32 @@ def main():
             continue
 
         try:
-            points = load_points(point_cloud_path)
-            points = subsample_points(points, args.max_points, args.seed + scene_id)
-            if args.device == "cuda":
-                torch.cuda.empty_cache()
+            raw_points = load_points(point_cloud_path)
+            lang_seq = None
+            used_seed = args.seed
+            for seed in [args.seed] + retry_empty_seeds:
+                points = subsample_points(raw_points, args.max_points, seed + scene_id)
+                if args.device == "cuda":
+                    torch.cuda.empty_cache()
 
-            lang_seq = model_wrapper.run_inference(
-                points,
-                nucleus_sampling_thresh=args.nucleus_sampling_thresh,
-                origin_padding=args.origin_padding,
-                verbose=False,
-            )
+                candidate = model_wrapper.run_inference(
+                    points,
+                    nucleus_sampling_thresh=args.nucleus_sampling_thresh,
+                    origin_padding=args.origin_padding,
+                    verbose=False,
+                )
+                lang_seq = candidate
+                used_seed = seed
+                if len(candidate.entities) > 0:
+                    break
+
             output_path.write_text(lang_seq.generate_language_string())
             done += 1
-            print(f"[{done:03d}] scene_{scene_id:05d}: {len(lang_seq.entities)} entities")
+            retry_note = f" seed={used_seed}" if used_seed != args.seed else ""
+            print(
+                f"[{done:03d}] scene_{scene_id:05d}: "
+                f"{len(lang_seq.entities)} entities{retry_note}"
+            )
         except Exception as exc:
             failed.append((scene_id, repr(exc)))
             print(f"[fail] scene_{scene_id:05d}: {exc}")
