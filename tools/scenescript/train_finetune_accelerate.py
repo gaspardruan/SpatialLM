@@ -9,6 +9,7 @@ import torch
 import torch.nn.functional as F
 import torchsparse
 from accelerate import Accelerator
+from accelerate.utils import InitProcessGroupKwargs
 from torchsparse.utils.collate import sparse_collate
 
 from convert_spatiallm_layout_to_scenescript import load_scene_origin
@@ -97,6 +98,12 @@ def parse_args():
     parser.add_argument("--log_every", type=int, default=10)
     parser.add_argument("--save_every", type=int, default=500)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--distributed_backend",
+        choices=["nccl", "gloo"],
+        default="nccl",
+        help="Distributed process-group backend. Use gloo when NCCL/NVML is broken.",
+    )
     return parser.parse_args()
 
 
@@ -140,7 +147,10 @@ def save_checkpoint(output, wrapper, encoder, decoder, optimizer, accelerator, s
 
 def main():
     args = parse_args()
-    accelerator = Accelerator(gradient_accumulation_steps=args.grad_accum_steps)
+    accelerator = Accelerator(
+        gradient_accumulation_steps=args.grad_accum_steps,
+        kwargs_handlers=[InitProcessGroupKwargs(backend=args.distributed_backend)],
+    )
     random.seed(args.seed + accelerator.process_index)
     np.random.seed(args.seed + accelerator.process_index)
     torch.manual_seed(args.seed + accelerator.process_index)
