@@ -4,3 +4,6 @@
 [submodule "baselines/SceneScript"]
 	path = baselines/SceneScript
 	url = git@github.com:gaspardruan/scenescript.git
+[submodule "baselines/VDETR"]
+	path = baselines/VDETR
+	url = git@github.com:V-DETR/V-DETR.git
