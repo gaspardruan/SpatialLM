@@ -14,6 +14,7 @@ torchaudio = { version = "^2.4.1+cu124", source = "pytorch" }
 transformers = ">=4.41.2,<=4.46.1"
 safetensors = "^0.4.5"
 pandas = "^2.2.3"
+plyfile = "0.7.4"
 einops = "^0.8.1"
 numpy = "^1.26"
 scipy = "^1.15.2"
