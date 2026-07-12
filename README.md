@@ -308,6 +308,55 @@ We evaluate 3D object detection on [ScanNet](http://www.scan-net.org) with annot
 
 </div>
 
+#### Reproducing the V-DETR baseline
+
+V-DETR uses its own Python 3.8 environment under `baselines/VDETR/.venv`. Prepare
+the SpatialLM evaluation metadata once:
+
+```bash
+cd baselines/VDETR
+.venv/bin/python tools/prepare_spatiallm_eval.py \
+  --split_csv ../../data/scannet/split.csv \
+  --output_dir spatiallm_eval
+```
+
+Export predictions with independent `0.5` objectness and semantic thresholds,
+followed by class-aware 3D NMS:
+
+```bash
+CUDA_VISIBLE_DEVICES=1 \
+CUDA_HOME=/home/lyd/cuda-11.3 \
+LD_LIBRARY_PATH=/home/lyd/cuda-11.3/lib64:/home/lyd/cuda-11.3/targets/x86_64-linux/lib:$LD_LIBRARY_PATH \
+OMP_NUM_THREADS=12 \
+.venv/bin/python main.py \
+  --dataset_name scannet \
+  --dataset_root_dir scannet/scannet_train_detection_data/ \
+  --meta_data_dir scannet/meta_data/ \
+  --test_only --auto_test \
+  --test_ckpt checkpoints/scannet_540ep.pth \
+  --spatiallm_pred_dir spatiallm_eval/pred \
+  --spatiallm_objectness_threshold 0.5 \
+  --spatiallm_semantic_threshold 0.5 \
+  --spatiallm_export_only
+```
+
+Run the SpatialLM per-scene F1 evaluation from the repository root:
+
+```bash
+python eval.py \
+  --metadata baselines/VDETR/spatiallm_eval/metadata.csv \
+  --gt_dir data/scannet/layout \
+  --pred_dir baselines/VDETR/spatiallm_eval/pred \
+  --label_mapping baselines/VDETR/spatiallm_eval/label_mapping.tsv \
+  --label_from scannet18 \
+  --label_to scannet18_eval \
+  --object_classes cabinet,bed,chair,sofa,table,door,window,bookshelf,picture,counter,desk,curtain,refrigerator,showercurtrain,toilet,sink,bathtub,garbagebin
+```
+
+The current public checkpoint and code produce `68.0` F1 at IoU 0.25 and `61.3`
+at IoU 0.5. The paper reports `65.1` and `56.8`; its V-DETR-to-SpatialLM
+conversion and exact NMS configuration were not released.
+
 ### Zero-shot Detection on Videos
 
 Zero-shot detection results on the challenging SpatialLM-Testset are reported in the following table:

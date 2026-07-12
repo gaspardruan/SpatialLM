@@ -395,7 +395,15 @@ if __name__ == "__main__":
     )
     parser.add_argument("--label_from", type=str, default="spatiallm59")
     parser.add_argument("--label_to", type=str, default="spatiallm20")
+    parser.add_argument(
+        "--object_classes",
+        type=str,
+        default=",".join(OBJECTS),
+        help="Comma-separated object classes to evaluate",
+    )
     args = parser.parse_args()
+
+    object_classes = [name.strip() for name in args.object_classes.split(",") if name.strip()]
 
     df = pd.read_csv(args.metadata)
     scene_id_list = df["id"].tolist()
@@ -472,9 +480,9 @@ if __name__ == "__main__":
             )
 
         # Normal Objects, F1
-        pred_normal_objects = [b for b in pred_layout.bboxes if b.class_name in OBJECTS]
-        gt_normal_objects = [b for b in gt_layout.bboxes if b.class_name in OBJECTS]
-        for class_name in OBJECTS:
+        pred_normal_objects = [b for b in pred_layout.bboxes if b.class_name in object_classes]
+        gt_normal_objects = [b for b in gt_layout.bboxes if b.class_name in object_classes]
+        for class_name in object_classes:
             classwise_eval_tuples_25[class_name].append(
                 calc_bbox_tp(
                     pred_entities=[
@@ -523,9 +531,15 @@ if __name__ == "__main__":
 
     headers = ["Objects", "F1 @.25 IoU", "F1 @.50 IoU"]
     table_data = [headers]
-    for class_name in OBJECTS:
+    object_f1_25 = []
+    object_f1_50 = []
+    for class_name in object_classes:
         f1_25 = mean_f1(classwise_eval_tuples_25[class_name])
         f1_50 = mean_f1(classwise_eval_tuples_50[class_name])
 
+        object_f1_25.append(f1_25)
+        object_f1_50.append(f1_50)
+
         table_data.append([class_name, f1_25, f1_50])
+    table_data.append(["avg", np.mean(object_f1_25), np.mean(object_f1_50)])
     print("\n" + AsciiTable(table_data).table)
