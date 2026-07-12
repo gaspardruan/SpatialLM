@@ -1,5 +1,7 @@
 import argparse
+import csv
 import sys
+import zlib
 from pathlib import Path
 
 import numpy as np
@@ -30,6 +32,13 @@ def parse_args():
     parser.add_argument("--output_dir", default="baselines/SceneScript/predictions_ase_200k")
     parser.add_argument("--scene_start", type=int, default=3250)
     parser.add_argument("--scene_end", type=int, default=3500)
+    parser.add_argument(
+        "--metadata",
+        default="",
+        help="Optional metadata CSV containing scene_id and pcd columns.",
+    )
+    parser.add_argument("--worker_rank", type=int, default=0)
+    parser.add_argument("--num_workers", type=int, default=1)
     parser.add_argument("--max_points", type=int, default=200000)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--nucleus_sampling_thresh", type=float, default=0.05)
@@ -52,12 +61,27 @@ def parse_args():
     return parser.parse_args()
 
 
+def load_scene_rows(args):
+    if args.metadata:
+        with Path(args.metadata).open() as f:
+            rows = list(csv.DictReader(f))
+        return rows[args.worker_rank :: args.num_workers]
+
+    dataset_dir = Path(args.dataset_dir)
+    return [
+        {
+            "scene_id": f"scene_{scene_id:05d}",
+            "pcd": str(dataset_dir / "pcd" / f"scene_{scene_id:05d}.ply"),
+        }
+        for scene_id in range(args.scene_start, args.scene_end)
+    ]
+
+
 def main():
     args = parse_args()
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
 
-    dataset_dir = Path(args.dataset_dir)
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -74,13 +98,14 @@ def main():
     skipped = 0
     missing = []
     failed = []
-    for scene_id in range(args.scene_start, args.scene_end):
-        output_path = output_dir / f"scene_{scene_id:05d}.txt"
+    for row in load_scene_rows(args):
+        scene_id = row["scene_id"]
+        output_path = output_dir / f"{scene_id}.txt"
         if output_path.exists() and not args.overwrite:
             skipped += 1
             continue
 
-        point_cloud_path = dataset_dir / "pcd" / f"scene_{scene_id:05d}.ply"
+        point_cloud_path = Path(row["pcd"])
         if not point_cloud_path.is_file():
             missing.append(scene_id)
             continue
@@ -90,7 +115,8 @@ def main():
             lang_seq = None
             used_seed = args.seed
             for seed in [args.seed] + retry_empty_seeds:
-                points = subsample_points(raw_points, args.max_points, seed + scene_id)
+                scene_seed = zlib.crc32(scene_id.encode("utf-8"))
+                points = subsample_points(raw_points, args.max_points, seed + scene_seed)
                 if args.device == "cuda":
                     torch.cuda.empty_cache()
 
@@ -109,12 +135,12 @@ def main():
             done += 1
             retry_note = f" seed={used_seed}" if used_seed != args.seed else ""
             print(
-                f"[{done:03d}] scene_{scene_id:05d}: "
+                f"[{done:03d}] {scene_id}: "
                 f"{len(lang_seq.entities)} entities{retry_note}"
             )
         except Exception as exc:
             failed.append((scene_id, repr(exc)))
-            print(f"[fail] scene_{scene_id:05d}: {exc}")
+            print(f"[fail] {scene_id}: {exc}")
 
     print(f"done={done} skipped={skipped} missing_pcd={len(missing)} failed={len(failed)}")
     if missing:

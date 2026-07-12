@@ -59,13 +59,39 @@ def preprocess_point_cloud(points, origin, cfg, device):
     return sparse_collate([sparse_tensor]).to(device)
 
 
-def load_training_example(row, cfg, max_points, seed, device, origin_padding):
+def load_training_example(
+    row, cfg, max_points, seed, device, origin_padding, rotation_degrees
+):
     points = load_points(row["pcd"])
     points = subsample_points(points, max_points, seed)
     origin = load_scene_origin(row["pcd"], padding_ratio=origin_padding)
-    sparse_tensor = preprocess_point_cloud(points, origin, cfg, device)
-
     language_sequence = LanguageSequence.load_from_file(row["language"])
+
+    points = points[:, :3] - torch.as_tensor(origin, dtype=torch.float32)
+    if rotation_degrees > 0:
+        rng = np.random.default_rng(seed)
+        angle_degrees = float(rng.uniform(-rotation_degrees, rotation_degrees))
+        angle = np.deg2rad(angle_degrees)
+        rotation = torch.tensor(
+            [
+                [np.cos(angle), -np.sin(angle), 0.0],
+                [np.sin(angle), np.cos(angle), 0.0],
+                [0.0, 0.0, 1.0],
+            ],
+            dtype=torch.float32,
+        )
+        points = points @ rotation.T
+        language_sequence.rotate(angle_degrees)
+
+        point_min = points.min(dim=0).values
+        point_max = points.max(dim=0).values
+        shift = point_min - origin_padding * (point_max - point_min)
+        points = points - shift
+        language_sequence.translate(-shift)
+
+    sparse_tensor = preprocess_point_cloud(
+        points, np.zeros(3, dtype=np.float32), cfg, device
+    )
     language_sequence.sort_entities("lex")
     language_sequence.normalize_and_discretize(
         cfg.data.num_bins, cfg.data.normalization_values
@@ -92,12 +118,23 @@ def parse_args():
     parser.add_argument("--max_steps", type=int, default=None)
     parser.add_argument("--max_points", type=int, default=200000)
     parser.add_argument("--origin_padding", type=float, default=0.1)
+    parser.add_argument(
+        "--rotation_degrees",
+        type=float,
+        default=0.0,
+        help="Uniform random Z rotation in [-value, value] degrees.",
+    )
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--weight_decay", type=float, default=1e-2)
     parser.add_argument("--grad_accum_steps", type=int, default=16)
     parser.add_argument("--log_every", type=int, default=10)
     parser.add_argument("--save_every", type=int, default=500)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--bbox_classes",
+        default="",
+        help="Comma-separated bbox taxonomy stored in the fine-tuned checkpoint.",
+    )
     parser.add_argument(
         "--distributed_backend",
         choices=["nccl", "gloo"],
@@ -157,6 +194,10 @@ def main():
 
     rows = read_metadata(args.metadata)
     wrapper = SceneScriptWrapper.load_from_checkpoint(args.checkpoint)
+    if args.bbox_classes:
+        wrapper.cfg.data.normalization_values.bbox_classes = [
+            value.strip() for value in args.bbox_classes.split(",") if value.strip()
+        ]
     wrapper.model.train()
     encoder = wrapper.model["encoder"]
     decoder = wrapper.model["decoder"]
@@ -186,10 +227,17 @@ def main():
                 seed=args.seed + epoch * len(rows) + accelerator.process_index + row_idx * accelerator.num_processes,
                 device=accelerator.device,
                 origin_padding=args.origin_padding,
+                rotation_degrees=args.rotation_degrees,
             )
 
             with accelerator.accumulate(encoder):
-                encoded = encoder(sparse_tensor)
+                try:
+                    encoded = encoder(sparse_tensor)
+                except Exception as exc:
+                    raise RuntimeError(
+                        f"Encoder failed for scene_id={row['scene_id']} "
+                        f"rank={accelerator.process_index} step={step}"
+                    ) from exc
                 decoder_input_value = seq_value[:-1].unsqueeze(0)
                 decoder_input_type = seq_type[:-1].unsqueeze(0)
                 target = seq_value[1:].unsqueeze(0)

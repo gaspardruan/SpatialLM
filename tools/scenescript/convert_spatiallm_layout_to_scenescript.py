@@ -33,6 +33,13 @@ def load_scene_origin(point_cloud_path, padding_ratio=0.0):
     return min_xyz - padding_ratio * (max_xyz - min_xyz)
 
 
+def load_scene_extent(point_cloud_path):
+    pcd = load_o3d_pcd(str(point_cloud_path))
+    points, _ = get_points_and_colors(pcd)
+    points = points[:, :3]
+    return np.max(points, axis=0) - np.min(points, axis=0)
+
+
 def convert_layout_to_scenescript(layout, pc_min=None):
     if pc_min is None:
         pc_min = np.zeros(3, dtype=float)
@@ -85,6 +92,21 @@ def convert_layout_to_scenescript(layout, pc_min=None):
                 z=fmt_float(window.position_z - pc_min[2]),
                 width=fmt_float(window.width),
                 height=fmt_float(window.height),
+            )
+        )
+
+    for new_id, bbox in enumerate(layout.bboxes):
+        lines.append(
+            "make_bbox, id={id}, class={class_name}, position_x={x}, position_y={y}, position_z={z}, angle_z={angle}, scale_x={sx}, scale_y={sy}, scale_z={sz}".format(
+                id=3000 + new_id,
+                class_name=bbox.class_name.replace(" ", "_"),
+                x=fmt_float(bbox.position_x - pc_min[0]),
+                y=fmt_float(bbox.position_y - pc_min[1]),
+                z=fmt_float(bbox.position_z - pc_min[2]),
+                angle=fmt_float(bbox.angle_z),
+                sx=fmt_float(bbox.scale_x),
+                sy=fmt_float(bbox.scale_y),
+                sz=fmt_float(bbox.scale_z),
             )
         )
 

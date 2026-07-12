@@ -7,6 +7,7 @@ import torch
 
 from convert_spatiallm_layout_to_scenescript import (
     convert_layout_to_scenescript,
+    load_scene_extent,
     load_scene_origin,
 )
 from run_batch_inference import DEFAULT_DATASET_DIR
@@ -27,8 +28,14 @@ def load_split_ids(split_csv, split):
         reader = csv.DictReader(f)
         for row in reader:
             if row["split"] == split:
-                scene_ids.append(int(row["id"].split("_")[-1]))
+                scene_ids.append(row["id"])
     return scene_ids
+
+
+def scene_stem(scene_id):
+    if scene_id.startswith("scene"):
+        return scene_id
+    return f"scene_{int(scene_id):05d}"
 
 
 def language_to_tokens(language_sequence, cfg):
@@ -79,6 +86,17 @@ def parse_args():
         help="Checkpoint used only to read the SceneScript normalization config.",
     )
     parser.add_argument("--origin_padding", type=float, default=0.1)
+    parser.add_argument(
+        "--min_extent",
+        type=float,
+        default=0.0,
+        help="Skip scenes whose point-cloud span along any axis is below this value.",
+    )
+    parser.add_argument(
+        "--bbox_classes",
+        default="",
+        help="Comma-separated bbox taxonomy overriding the checkpoint config.",
+    )
     parser.add_argument("--limit", type=int, default=None)
     return parser.parse_args()
 
@@ -92,6 +110,10 @@ def main():
 
     ckpt = torch.load(args.checkpoint, map_location="cpu")
     cfg = ckpt["cfg"]
+    if args.bbox_classes:
+        cfg["data"]["normalization_values"]["bbox_classes"] = [
+            value.strip() for value in args.bbox_classes.split(",") if value.strip()
+        ]
 
     scene_ids = load_split_ids(dataset_dir / "split.csv", args.split)
     if args.limit is not None:
@@ -100,16 +122,22 @@ def main():
     rows = []
     missing = []
     failed = []
+    too_thin = []
     token_lengths = []
     for scene_id in scene_ids:
-        layout_path = dataset_dir / "layout" / f"scene_{scene_id:05d}.txt"
-        pcd_path = dataset_dir / "pcd" / f"scene_{scene_id:05d}.ply"
+        stem = scene_stem(scene_id)
+        layout_path = dataset_dir / "layout" / f"{stem}.txt"
+        pcd_path = dataset_dir / "pcd" / f"{stem}.ply"
         if not layout_path.is_file() or not pcd_path.is_file():
             missing.append(scene_id)
             continue
 
-        out_path = language_dir / f"scene_{scene_id:05d}.txt"
+        out_path = language_dir / f"{stem}.txt"
         try:
+            extent = load_scene_extent(pcd_path)
+            if float(extent.min()) < args.min_extent:
+                too_thin.append((scene_id, extent.tolist()))
+                continue
             layout = Layout(layout_path.read_text())
             origin = load_scene_origin(pcd_path, padding_ratio=args.origin_padding)
             text = convert_layout_to_scenescript(layout, pc_min=origin)
@@ -122,7 +150,7 @@ def main():
 
         rows.append(
             {
-                "scene_id": f"scene_{scene_id:05d}",
+                "scene_id": stem,
                 "pcd": str(pcd_path),
                 "language": str(out_path),
             }
@@ -136,6 +164,9 @@ def main():
     print(f"Prepared {len(rows)} {args.split} scenes in {output_dir}")
     print(f"Missing pcd/layout: {len(missing)}")
     print(f"Failed: {len(failed)}")
+    print(f"Below minimum extent: {len(too_thin)}")
+    if too_thin:
+        print(too_thin[:10])
     if failed:
         print(failed[:10])
     if token_lengths:

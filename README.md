@@ -378,6 +378,104 @@ Change `SCENE_ID` to any scene listed in
 `baselines/VDETR/scannet/meta_data/scannetv2_val.txt`. The PLY point cloud and
 V-DETR prediction use the same ScanNet `axisAlignment` coordinate frame.
 
+#### Reproducing the SceneScript detection baseline
+
+Prepare the ScanNet `make_bbox` training and test sequences from the repository
+root. The minimum-extent filter removes two incomplete training scans that
+collapse to an empty tensor in SceneScript's four-stage sparse encoder.
+
+```bash
+SCANNET_CLASSES=cabinet,bed,chair,sofa,table,door,window,bookshelf,picture,counter,desk,curtain,refrigerator,showercurtrain,toilet,sink,bathtub,garbagebin
+
+python tools/scenescript/prepare_finetune_data.py \
+  --dataset_dir data/scannet \
+  --output_dir baselines/SceneScript/scannet_finetune \
+  --split train \
+  --checkpoint baselines/SceneScript/checkpoints/scenescript_model_pp.ckpt \
+  --origin_padding 0.1 \
+  --min_extent 0.8 \
+  --bbox_classes "$SCANNET_CLASSES"
+
+python tools/scenescript/prepare_finetune_data.py \
+  --dataset_dir data/scannet \
+  --output_dir baselines/SceneScript/scannet_finetune \
+  --split test \
+  --checkpoint baselines/SceneScript/checkpoints/scenescript_model_pp.ckpt \
+  --origin_padding 0.1 \
+  --bbox_classes "$SCANNET_CLASSES"
+```
+
+Fine-tune on seven GPUs. GPU 4 is intentionally excluded on this machine.
+Rotation augmentation matches the SceneScript training protocol, and gradient
+accumulation gives an effective batch size of approximately 63.
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1,2,3,5,6,7 \
+.venv/bin/accelerate launch --num_processes 7 --multi_gpu \
+  tools/scenescript/train_finetune_accelerate.py \
+  --metadata baselines/SceneScript/scannet_finetune/train/metadata.csv \
+  --checkpoint baselines/SceneScript/checkpoints/scenescript_model_pp.ckpt \
+  --output baselines/SceneScript/checkpoints/scenescript_pp_finetuned_scannet_accelerate7.ckpt \
+  --epochs 100 \
+  --max_steps 15000 \
+  --max_points 200000 \
+  --origin_padding 0.1 \
+  --rotation_degrees 180 \
+  --lr 1e-4 \
+  --weight_decay 1e-2 \
+  --grad_accum_steps 9 \
+  --save_every 0 \
+  --bbox_classes "$SCANNET_CLASSES"
+
+python tools/scenescript/make_inference_checkpoint.py \
+  --input baselines/SceneScript/checkpoints/scenescript_pp_finetuned_scannet_accelerate7.ckpt \
+  --output baselines/SceneScript/checkpoints/scenescript_pp_finetuned_scannet_inference.ckpt
+```
+
+Run greedy inference, convert the predictions, and evaluate all 312 test scenes:
+
+```bash
+python tools/scenescript/run_parallel_inference.py \
+  --gpus 0,1,2,3,5,6,7 \
+  --metadata baselines/SceneScript/scannet_finetune/test/metadata.csv \
+  --checkpoint baselines/SceneScript/checkpoints/scenescript_pp_finetuned_scannet_inference.ckpt \
+  --output_dir baselines/SceneScript/predictions_pp_ft_scannet \
+  --max_points 200000 \
+  --nucleus_sampling_thresh 0 \
+  --origin_padding 0.1
+
+python tools/scenescript/prepare_spatiallm_eval_scannet.py \
+  --prediction_dir baselines/SceneScript/predictions_pp_ft_scannet \
+  --metadata baselines/SceneScript/scannet_finetune/test/metadata.csv \
+  --gt_dir data/scannet/layout \
+  --output_dir baselines/SceneScript/spatiallm_eval_pp_ft_scannet
+
+python eval.py \
+  --metadata baselines/SceneScript/spatiallm_eval_pp_ft_scannet/metadata.csv \
+  --gt_dir data/scannet/layout \
+  --pred_dir baselines/SceneScript/spatiallm_eval_pp_ft_scannet/pred \
+  --label_mapping baselines/SceneScript/spatiallm_eval_pp_ft_scannet/label_mapping.tsv \
+  --label_from scannet18 \
+  --label_to scannet18_eval \
+  --object_classes "$SCANNET_CLASSES"
+```
+
+This 15,000-step run obtains `35.83` F1 at IoU 0.25 and `27.31` at IoU 0.5.
+The paper reports `49.1` and `36.8` using the original SceneScript training
+budget of approximately 200,000 iterations over 3-4 days.
+
+Visualize a SceneScript detection:
+
+```bash
+SCENE_ID=scene0249_00
+.venv/bin/python visualize.py \
+  --point_cloud data/scannet/pcd/${SCENE_ID}.ply \
+  --layout baselines/SceneScript/spatiallm_eval_pp_ft_scannet/pred/${SCENE_ID}.txt \
+  --save outputs/scenescript_${SCENE_ID}.rrd
+
+.venv/bin/rerun outputs/scenescript_${SCENE_ID}.rrd --web-viewer
+```
+
 ### Zero-shot Detection on Videos
 
 Zero-shot detection results on the challenging SpatialLM-Testset are reported in the following table:

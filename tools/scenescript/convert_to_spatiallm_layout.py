@@ -6,7 +6,7 @@ from pathlib import Path
 SCENESCRIPT_ROOT = Path(__file__).resolve().parents[2] / "baselines" / "SceneScript"
 sys.path.insert(0, str(SCENESCRIPT_ROOT))
 
-from src.data.geometries import DoorEntity, WallEntity, WindowEntity  # noqa: E402
+from src.data.geometries import BboxEntity, DoorEntity, WallEntity, WindowEntity  # noqa: E402
 from src.data.language_sequence import LanguageSequence  # noqa: E402
 
 
@@ -77,6 +77,25 @@ def convert_language_to_spatiallm(language_sequence, wall_thickness):
                 )
             )
             window_id += 1
+
+    bbox_id = 0
+    for entity in language_sequence.entities:
+        if not isinstance(entity, BboxEntity):
+            continue
+        lines.append(
+            "bbox_{id}=Bbox({class_name},{x},{y},{z},{angle},{sx},{sy},{sz})".format(
+                id=bbox_id,
+                class_name=str(entity.params["class"]).replace("_", " "),
+                x=fmt_float(entity.params["position_x"]),
+                y=fmt_float(entity.params["position_y"]),
+                z=fmt_float(entity.params["position_z"]),
+                angle=fmt_float(entity.params["angle_z"]),
+                sx=fmt_float(entity.params["scale_x"]),
+                sy=fmt_float(entity.params["scale_y"]),
+                sz=fmt_float(entity.params["scale_z"]),
+            )
+        )
+        bbox_id += 1
 
     return "\n".join(lines)
 

@@ -11,6 +11,11 @@ def parse_args():
     parser.add_argument("--gpus", default="0,1,2,3", help="Comma-separated GPU ids.")
     parser.add_argument("--dataset_dir", default="")
     parser.add_argument(
+        "--metadata",
+        default="",
+        help="Optional metadata CSV; each GPU receives an interleaved shard.",
+    )
+    parser.add_argument(
         "--checkpoint",
         default="baselines/SceneScript/checkpoints/scenescript_model_ase.ckpt",
     )
@@ -54,9 +59,12 @@ def main():
     log_dir.mkdir(parents=True, exist_ok=True)
 
     processes = []
-    for worker_id, (gpu, (scene_start, scene_end)) in enumerate(
-        zip(gpus, chunk_ranges(args.scene_start, args.scene_end, len(gpus)))
-    ):
+    if args.metadata:
+        work_items = [(gpu, None) for gpu in gpus]
+    else:
+        work_items = list(zip(gpus, chunk_ranges(args.scene_start, args.scene_end, len(gpus))))
+
+    for worker_id, (gpu, scene_range) in enumerate(work_items):
         cmd = [
             sys.executable,
             str(runner),
@@ -64,10 +72,6 @@ def main():
             args.checkpoint,
             "--output_dir",
             args.output_dir,
-            "--scene_start",
-            str(scene_start),
-            "--scene_end",
-            str(scene_end),
             "--max_points",
             str(args.max_points),
             "--seed",
@@ -77,6 +81,24 @@ def main():
             "--origin_padding",
             str(args.origin_padding),
         ]
+        if args.metadata:
+            cmd.extend(
+                [
+                    "--metadata",
+                    args.metadata,
+                    "--worker_rank",
+                    str(worker_id),
+                    "--num_workers",
+                    str(len(gpus)),
+                ]
+            )
+            scene_start = worker_id
+            scene_end = worker_id + 1
+        else:
+            scene_start, scene_end = scene_range
+            cmd.extend(
+                ["--scene_start", str(scene_start), "--scene_end", str(scene_end)]
+            )
         if args.dataset_dir:
             cmd.extend(["--dataset_dir", args.dataset_dir])
         if args.retry_empty_seeds:
