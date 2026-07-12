@@ -357,6 +357,27 @@ The current public checkpoint and code produce `68.0` F1 at IoU 0.25 and `61.3`
 at IoU 0.5. The paper reports `65.1` and `56.8`; its V-DETR-to-SpatialLM
 conversion and exact NMS configuration were not released.
 
+Visualize a V-DETR prediction with its axis-aligned ScanNet point cloud. Run
+these commands from the repository root:
+
+```bash
+SCENE_ID=scene0249_00
+mkdir -p outputs
+
+.venv/bin/python visualize.py \
+  --point_cloud data/scannet/pcd/${SCENE_ID}.ply \
+  --layout baselines/VDETR/spatiallm_eval/pred/${SCENE_ID}.txt \
+  --save outputs/vdetr_${SCENE_ID}.rrd \
+  --max_points 1000000 \
+  --radius 0.01
+
+.venv/bin/rerun outputs/vdetr_${SCENE_ID}.rrd --web-viewer
+```
+
+Change `SCENE_ID` to any scene listed in
+`baselines/VDETR/scannet/meta_data/scannetv2_val.txt`. The PLY point cloud and
+V-DETR prediction use the same ScanNet `axisAlignment` coordinate frame.
+
 ### Zero-shot Detection on Videos
 
 Zero-shot detection results on the challenging SpatialLM-Testset are reported in the following table:
