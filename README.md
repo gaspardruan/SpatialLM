@@ -501,6 +501,53 @@ SCENE_ID=scene0249_00
 .venv/bin/rerun outputs/scenescript_${SCENE_ID}.rrd --web-viewer
 ```
 
+#### Collecting the final baseline results
+
+After all four baselines have been evaluated, collect their final predictions
+under `results/` in the common SpatialLM text format:
+
+```bash
+.venv/bin/python tools/collect_spatiallm_results.py
+```
+
+This command does not run model inference. It copies the existing final
+RoomFormer and SceneScript Structured3D layout predictions, and the V-DETR and
+SceneScript ScanNet object predictions. Their source directories, checkpoints,
+and scene counts are recorded in `results/manifest.json`.
+
+Generate one Rerun example for each model:
+
+```bash
+HF_STRUCTURED3D=/ssd/zq/.cache/huggingface/hub/datasets--ysmao--structured3d-spatiallm/snapshots/c5bedd45675b566547e6ae0bc077681bc58b7b35
+mkdir -p results/visualizations
+
+.venv/bin/python visualize.py \
+  --point_cloud "$HF_STRUCTURED3D/pcd/scene_03250.ply" \
+  --layout results/layout_estimation/roomformer/3250.txt \
+  --save results/visualizations/layout_roomformer_3250.rrd
+
+.venv/bin/python visualize.py \
+  --point_cloud "$HF_STRUCTURED3D/pcd/scene_03250.ply" \
+  --layout results/layout_estimation/scenescript_structured3d/3250.txt \
+  --save results/visualizations/layout_scenescript_structured3d_3250.rrd
+
+.venv/bin/python visualize.py \
+  --point_cloud data/scannet/pcd/scene0249_00.ply \
+  --layout results/object_detection/vdetr/scene0249_00.txt \
+  --save results/visualizations/detection_vdetr_scene0249_00.rrd
+
+.venv/bin/python visualize.py \
+  --point_cloud data/scannet/pcd/scene0249_00.ply \
+  --layout results/object_detection/scenescript_scannet/scene0249_00.txt \
+  --save results/visualizations/detection_scenescript_scannet_scene0249_00.rrd
+```
+
+Open any generated recording with the web viewer, for example:
+
+```bash
+.venv/bin/rerun results/visualizations/layout_roomformer_3250.rrd --web-viewer
+```
+
 ### Zero-shot Detection on Videos
 
 Zero-shot detection results on the challenging SpatialLM-Testset are reported in the following table:
