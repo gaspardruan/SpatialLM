@@ -464,6 +464,31 @@ This 15,000-step run obtains `35.83` F1 at IoU 0.25 and `27.31` at IoU 0.5.
 The paper reports `49.1` and `36.8` using the original SceneScript training
 budget of approximately 200,000 iterations over 3-4 days.
 
+For the longer 500k-point continuation run, use the orchestration script below.
+It resumes from the 15,000-step PP inference checkpoint, trains for another
+45,000 local steps at `2e-5`, saves every 5,000 steps, evaluates every saved
+checkpoint, selects the best macro F1 result, and generates a Rerun file:
+
+```bash
+bash tools/scenescript/run_scannet_detection_long.sh all
+```
+
+Training and evaluation can also be run separately. This is useful after an
+interruption or when checkpoints already exist:
+
+```bash
+bash tools/scenescript/run_scannet_detection_long.sh train
+bash tools/scenescript/run_scannet_detection_long.sh evaluate
+```
+
+The checkpoint comparison is written to
+`baselines/SceneScript/scannet_long45000/checkpoint_metrics.tsv`. The selected
+inference model is written to
+`baselines/SceneScript/checkpoints/scenescript_model_scannet_best_inference.ckpt`.
+Intermediate checkpoints require approximately 3 GB of free disk space in
+total. GPU 4 is excluded by default; override `GPU_LIST` and `NUM_GPUS` only if
+the hardware configuration changes.
+
 Visualize a SceneScript detection:
 
 ```bash

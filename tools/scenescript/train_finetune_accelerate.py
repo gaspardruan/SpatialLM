@@ -153,7 +153,10 @@ def get_epoch_rows(rows, epoch, seed, rank, world_size):
     return epoch_rows[rank::world_size]
 
 
-def save_checkpoint(output, wrapper, encoder, decoder, optimizer, accelerator, step, epoch):
+def save_checkpoint(
+    output, wrapper, encoder, decoder, optimizer, accelerator, step, epoch,
+    write_latest=True,
+):
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     state_dict = {}
@@ -177,9 +180,12 @@ def save_checkpoint(output, wrapper, encoder, decoder, optimizer, accelerator, s
         "epoch": epoch,
     }
     accelerator.save(ckpt, output)
-    latest_path = output.with_name(output.stem + "_latest.ckpt")
-    accelerator.save(ckpt, latest_path)
-    accelerator.print(f"Saved {output} and {latest_path}")
+    if write_latest:
+        latest_path = output.with_name(output.stem + "_latest.ckpt")
+        accelerator.save(ckpt, latest_path)
+        accelerator.print(f"Saved {output} and {latest_path}")
+    else:
+        accelerator.print(f"Saved {output}")
 
 
 def main():
@@ -276,6 +282,7 @@ def main():
                     accelerator,
                     step,
                     epoch,
+                    write_latest=False,
                 )
 
             if args.max_steps is not None and step >= args.max_steps:
