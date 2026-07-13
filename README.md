@@ -548,6 +548,45 @@ Open any generated recording with the web viewer, for example:
 .venv/bin/rerun results/visualizations/layout_roomformer_3250.rrd --web-viewer
 ```
 
+#### Measuring SceneScript efficiency
+
+Benchmark both final fine-tuned SceneScript models on one GPU and save raw
+per-scene measurements before producing aggregate statistics:
+
+```bash
+GPU=6 bash tools/scenescript/run_efficiency_benchmark.sh
+```
+
+The benchmark times only the point-cloud encoder and autoregressive token
+generation. PLY reading, point sampling, sparse-input preprocessing, language
+postprocessing, and result writing are outside the timed interval. A CUDA
+synchronization is performed at both timing boundaries. The initial START token
+is excluded from the token count, while the generated STOP token is included.
+
+Raw records are appended after every scene, so an interrupted benchmark can be
+resumed with the same command. Outputs are stored under
+`results/scenescript_efficiency/`:
+
+```text
+structured3d_raw.jsonl  # SceneScript Structured3D per-scene records
+scannet_raw.jsonl       # SceneScript ScanNet per-scene records
+per_scene.csv           # Combined successful scene measurements
+summary.csv             # Machine-readable aggregate statistics
+summary.json            # Aggregate statistics as JSON
+summary.md              # Presentation-friendly table
+environment.json        # GPU and PyTorch/CUDA versions
+```
+
+Regenerate only the aggregate files from saved raw records with:
+
+```bash
+.venv/bin/python tools/scenescript/summarize_efficiency.py \
+  results/scenescript_efficiency/structured3d_raw.jsonl \
+  results/scenescript_efficiency/scannet_raw.jsonl \
+  --output-dir results/scenescript_efficiency \
+  --gpu-index 6
+```
+
 ### Zero-shot Detection on Videos
 
 Zero-shot detection results on the challenging SpatialLM-Testset are reported in the following table:
