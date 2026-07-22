@@ -587,6 +587,27 @@ Regenerate only the aggregate files from saved raw records with:
   --gpu-index 6
 ```
 
+Measure the batch-size-one forward latency of RoomFormer and V-DETR, then
+combine it with the saved SceneScript generation measurements:
+
+```bash
+GPU=5 bash tools/run_model_efficiency_benchmark.sh
+```
+
+RoomFormer and V-DETR are feed-forward models and therefore do not have a token
+generation rate. Their timing covers only `model(inputs)`. Data loading, input
+preprocessing, NMS, coordinate conversion, and result writing are excluded.
+Per-scene raw records are saved before aggregation:
+
+```text
+results/model_efficiency/roomformer_raw.jsonl
+results/model_efficiency/vdetr_raw.jsonl
+results/model_efficiency/summary.csv
+results/model_efficiency/summary.json
+results/model_efficiency/summary.md
+results/model_efficiency/environment.json
+```
+
 ### Zero-shot Detection on Videos
 
 Zero-shot detection results on the challenging SpatialLM-Testset are reported in the following table:
